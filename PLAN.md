@@ -56,8 +56,8 @@ Ký hiệu: `[ ]` chưa làm · `[x]` xong · 👤 bạn làm · 🤖 Claude là
 - [x] 1.2 🤖 API `hello` + `native/hello` (script cần quyền chạy – mô phỏng `native/tesac`, mode `100755`)
 - [x] 1.3 🤖 Test `backend/tests/` (route, handler, quyền chạy) + lint (black / isort / flake8, `.pre-commit-config.yaml`)
 - [x] 1.4 🤖 `template.yaml` (Function + REST Api + S3 + CloudFront OAC, secret từ Secrets Manager) + `samconfig.toml`
-- [ ] 1.5 🤖 Frontend Vue 3 + Vite: màn gọi `/api/hello`, `VITE_API_BASE_URL=/api/`
-- [ ] 1.6 🤖 Kiểm tra local (`pytest`, `sam validate --lint`, `npm run build`, grep) → 👤 tự commit
+- [x] 1.5 🤖 Frontend Vue 3 + Vite: màn gọi `/api/hello`, `VITE_API_BASE_URL=/api/`
+- [x] 1.6 🤖 Kiểm tra local (`pytest`, `sam validate --lint`, `npm run build`, grep) → 👤 tự commit
 
 ## Phase 2 – Chạy local
 - [ ] 👤 `pytest backend/tests`
