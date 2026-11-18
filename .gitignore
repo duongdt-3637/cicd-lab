@@ -17,3 +17,6 @@ dist/
 # Misc
 .DS_Store
 *.log
+
+# Log cấu hình AWS cá nhân – chỉ giữ ở máy
+docs/aws-setup-log.md

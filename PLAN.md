@@ -44,9 +44,11 @@ Ký hiệu: `[ ]` chưa làm · `[x]` xong · 👤 bạn làm · 🤖 Claude là
 
 ## Phase 0 – Chuẩn bị
 - [x] 🤖 Tạo thư mục `cicd-lab/`, `git init`, lưu `PLAN.md` (file này)
-- [x] 👤 AWS account cá nhân: bật MFA root, tạo IAM user/Identity Center để làm việc
+- [x] 👤 AWS account cá nhân + bật MFA root
+- [x] 👤 Tạo IAM user `cicd-lab-admin` + access key (CLI)
 - [x] 👤 Tạo AWS Budget báo động $5
-- [ ] 👤 Cấu hình AWS CLI profile `cicd-lab` (`aws sts get-caller-identity --profile cicd-lab`)
+- [x] 👤 Cấu hình AWS CLI profile `cicd-lab` (`aws sts get-caller-identity --profile cicd-lab`)
+  - Mỗi terminal làm lab: `export AWS_PROFILE=cicd-lab` (profile `default` = account khác!)
 - [x] 👤 Cài / kiểm tra: SAM CLI, Python 3.12, Node 20, Git
 - [x] 👤 Tạo repo GitHub cá nhân `cicd-lab` (public để dùng miễn phí Environment reviewer ở Phase 6)
 
