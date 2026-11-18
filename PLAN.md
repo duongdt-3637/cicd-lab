@@ -23,7 +23,7 @@ Ký hiệu: `[ ]` chưa làm · `[x]` xong · 👤 bạn làm · 🤖 Claude là
 
 - **9 buổi**; cuối tuần 21–22/11 và 28–29/11 để **dự phòng** khi bị chậm.
 - Bỏ để kịp: EventBridge S3 (Phase 4), thử rollback (Phase 5). Nếu dư thời gian thì làm lại.
-- Mỗi buổi dành ~10 phút ghi 2–3 dòng "hôm nay hiểu gì / còn mù mờ gì" → dùng cho Phase 8.
+- Mỗi buổi dành ~10 phút ghi "hôm nay hiểu gì / còn mù mờ gì" vào `LEARNING.md` → dùng cho Phase 8.
 
 ---|---|---|---|
 | 0 | Chuẩn bị account, công cụ, repo | 1 ngày | 1 |
@@ -44,11 +44,11 @@ Ký hiệu: `[ ]` chưa làm · `[x]` xong · 👤 bạn làm · 🤖 Claude là
 
 ## Phase 0 – Chuẩn bị
 - [x] 🤖 Tạo thư mục `cicd-lab/`, `git init`, lưu `PLAN.md` (file này)
-- [ ] 👤 AWS account cá nhân: bật MFA root, tạo IAM user/Identity Center để làm việc
-- [ ] 👤 Tạo AWS Budget báo động $5
+- [x] 👤 AWS account cá nhân: bật MFA root, tạo IAM user/Identity Center để làm việc
+- [x] 👤 Tạo AWS Budget báo động $5
 - [ ] 👤 Cấu hình AWS CLI profile `cicd-lab` (`aws sts get-caller-identity --profile cicd-lab`)
-- [ ] 👤 Cài / kiểm tra: SAM CLI, Python 3.12, Node 20, Git
-- [ ] 👤 Tạo repo GitHub cá nhân `cicd-lab` (public để dùng miễn phí Environment reviewer ở Phase 6)
+- [x] 👤 Cài / kiểm tra: SAM CLI, Python 3.12, Node 20, Git
+- [x] 👤 Tạo repo GitHub cá nhân `cicd-lab` (public để dùng miễn phí Environment reviewer ở Phase 6)
 
 ## Phase 1 – Khung code (giống dự án) – dựng từng bước, mỗi bước giải thích rồi chờ "tiếp"
 > Bản làm sẵn để tham khảo: nhánh `phase1-ref` (`git diff main phase1-ref`)

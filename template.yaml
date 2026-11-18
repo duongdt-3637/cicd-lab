@@ -1,0 +1,142 @@
+# ===== Header: bắt buộc cho mọi template SAM =====
+# AWSTemplateFormatVersion: phiên bản cú pháp CloudFormation, chỉ có đúng 1 giá trị
+# Transform: bật SAM → viết rút gọn AWS::Serverless::*; deploy thì AWS dịch ra CloudFormation đầy đủ
+#   (1 AWS::Serverless::Function → Lambda + IAM Role + API Gateway + Permission…)
+# Description: mô tả tự do, hiện ở CloudFormation Console
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: cicd-lab - Lambda + REST API + S3/CloudFront (mô phỏng dự án thật)
+
+# ===== Parameters: "ô nhập liệu" lúc deploy → 1 template, nhiều môi trường =====
+# Giá trị lấy từ samconfig.toml: parameter_overrides = "Env=stg"
+# Dùng trong template: !Ref Env hoặc ${Env} (trong !Sub). Gõ sai AllowedValues → deploy bị từ chối
+Parameters:
+  Env:
+    Type: String
+    AllowedValues: [stg, prd]
+    Description: Môi trường deploy. Secret đọc từ Secrets Manager `cicd-lab/<Env>`.
+
+# ===== Globals: cài đặt chung cho tài nguyên SAM (AWS::Serverless::*) =====
+# Khối có thể có: Function, Api, HttpApi, SimpleTable, StateMachine, LayerVersion
+# KHÔNG áp dụng cho resource thường (S3, CloudFront…). Hàm nào cần khác → ghi đè trong Properties
+# Timeout: quá 10s Lambda bị dừng (API GW chờ tối đa ~29s) · MemorySize: RAM nhiều → CPU mạnh, tốn tiền hơn
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 10
+    MemorySize: 256
+
+# ===== Resources: mỗi khối = 1 tài nguyên AWS =====
+# Cấu trúc: <TênTựĐặt>: { Type: AWS::..., Properties: ... }
+# Backend: AppFunction, AppFunctionLogGroup · Frontend: FrontendBucket, FrontendBucketPolicy, FrontendOAC, Distribution
+Resources:
+  # ---------- Backend ----------
+  AppFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: backend/ # zip thư mục backend/ lên Lambda
+      Handler: lambda_function.lambda_handler # <file>.<hàm> được gọi khi có request
+      Environment:
+        Variables: # đọc bằng os.environ trong backend/conf/config.py
+          RUNTIME_ENV: !Ref Env
+          # Secret phải tạo trước khi deploy (Phase 3), dạng JSON: {"APP_MESSAGE": "..."}
+          APP_MESSAGE: !Sub "{{resolve:secretsmanager:cicd-lab/${Env}:SecretString:APP_MESSAGE}}"
+      Events:
+        ApiProxy:
+          Type: Api # tạo REST API ngầm định `ServerlessRestApi`, stage `Prod`
+          Properties:
+            Path: /api/{proxy+} # mọi path bắt đầu bằng /api/
+            Method: ANY # mọi method; api_route.py tự phân loại (giống dự án thật)
+
+  AppFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AppFunction}
+      RetentionInDays: 7
+
+  # ---------- Frontend ----------
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub ${FrontendBucket.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
+  FrontendOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub cicd-lab-${Env}-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub cicd-lab-${Env}
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_100
+        HttpVersion: http2
+        Origins:
+          - Id: S3Frontend
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt FrontendOAC.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+          - Id: ApiGateway
+            DomainName: !Sub ${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com
+            OriginPath: /Prod
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+        DefaultCacheBehavior:
+          TargetOriginId: S3Frontend
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # Managed-CachingOptimized
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: ApiGateway
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # Managed-CachingDisabled
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # Managed-AllViewerExceptHostHeader
+
+# ===== Outputs: giá trị stack in ra sau khi deploy =====
+# Cần vì nhiều giá trị chỉ có SAU khi tạo (tên bucket, domain CloudFront do AWS tự sinh)
+# Script / CI đọc: aws cloudformation describe-stacks --stack-name cicd-lab-stg --query "Stacks[0].Outputs"
+#   → s3 sync lên FrontendBucket → invalidate DistributionId
+# !Ref X = giá trị chính của X (bucket → tên, CloudFront → ID) · !Sub "${X.Attr}" = ghép chuỗi / lấy thuộc tính
+Outputs:
+  ApiUrl:
+    Description: Gọi thẳng API Gateway (không qua CloudFront)
+    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/api/
+  SiteUrl:
+    Description: URL web (FE + /api/* qua CloudFront)
+    Value: !Sub https://${Distribution.DomainName}
+  FrontendBucket:
+    Description: Bucket chứa FE build (dist/)
+    Value: !Ref FrontendBucket
+  DistributionId:
+    Description: Dùng để invalidate CloudFront sau khi upload FE
+    Value: !Ref Distribution

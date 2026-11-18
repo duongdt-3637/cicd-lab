@@ -1,0 +1,39 @@
+# file lưu sẵn tham số cho lệnh sam, để không phải gõ lại các tuỳ chọn dài mỗi lần chạy. Nó chỉ dành cho SAM CLI trên máy hoặc CI; AWS không đọc file này.
+# Dùng: sam build && sam deploy --config-env stg   (hoặc prd)
+# Không ghi profile ở đây → máy cá nhân: export AWS_PROFILE=cicd-lab; CI dùng role của CodeBuild / OIDC.
+version = 0.1
+
+[default.global.parameters]
+region = "ap-northeast-1"
+
+[default.validate.parameters]
+lint = true
+
+[default.build.parameters]
+cached = true
+
+[default.local_start_api.parameters]
+env_vars = "env.local.json"
+parameter_overrides = "Env=stg"
+
+[stg.global.parameters]
+region = "ap-northeast-1"
+
+[stg.deploy.parameters]
+stack_name = "cicd-lab-stg"
+resolve_s3 = true
+s3_prefix = "cicd-lab-stg"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "Env=stg"
+confirm_changeset = true
+
+[prd.global.parameters]
+region = "ap-northeast-1"
+
+[prd.deploy.parameters]
+stack_name = "cicd-lab-prd"
+resolve_s3 = true
+s3_prefix = "cicd-lab-prd"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "Env=prd"
+confirm_changeset = true
