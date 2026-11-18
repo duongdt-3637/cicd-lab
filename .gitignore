@@ -1,0 +1,19 @@
+# SAM
+.aws-sam/
+samconfig.local.toml
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Frontend
+node_modules/
+dist/
+.env.local
+.env.*.local
+
+# Misc
+.DS_Store
+*.log

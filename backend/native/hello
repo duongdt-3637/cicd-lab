@@ -1,0 +1,3 @@
+#!/bin/sh
+# Mô phỏng binary native/tesac: Lambda gọi bằng subprocess → file PHẢI có quyền chạy.
+echo "hello from native: ${1:-world}"

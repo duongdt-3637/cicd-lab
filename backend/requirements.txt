@@ -1,0 +1,1 @@
+# Thư viện runtime của Lambda (boto3 đã có sẵn trong runtime python3.12)
