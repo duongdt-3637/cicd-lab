@@ -21,3 +21,37 @@
   - Giải quyết: root có toàn quyền và không giới hạn được → lộ root là mất account; IAM user giới hạn được quyền, có MFA, xoá được.
   - Thành phần: user / group / role / policy (identity-based gắn vào người, resource-based gắn vào tài nguyên); cấp quyền qua group (best practice), copy, hoặc attach trực tiếp; MFA; access key (cho CLI).
   - Lưu ý: IAM user không có email, dùng chung Account ID với root; least privilege; Deny luôn thắng Allow; group không lồng nhau; access key + mật khẩu chỉ hiện 1 lần; dịch vụ AWS / CI dùng **role**, không dùng access key.
+
+## Ngày 2 – 19/11 (venv, lệnh SAM, chạy local)
+- **Python venv (`source .venv/bin/activate`)**
+  - Mục tiêu: bật môi trường Python riêng của project (giống `node_modules` bên Node).
+  - Giải quyết: `pytest`, `black`, `flake8`… chỉ cài trong `.venv`, mỗi project giữ version thư viện riêng, không đụng nhau.
+  - Cơ chế: đưa `.venv/bin` lên đầu `PATH` → `python` / `pip` / `pytest` dùng bản trong `.venv`; prompt hiện `(.venv)`.
+  - Lưu ý: chỉ có hiệu lực ở terminal hiện tại, mở terminal mới phải chạy lại; tắt bằng `deactivate`; CI thường không cần (mỗi lần build là máy sạch).
+- **`sam validate --lint`**
+  - Mục tiêu: bắt lỗi template trước khi deploy (đỡ chờ AWS 5–15 phút rồi mới fail).
+  - Input → Output: `template.yaml` → báo valid / danh sách lỗi kèm số dòng; không tạo file.
+  - Cơ chế: dịch SAM sang CloudFormation thuần → chạy `cfn-lint` (tên resource, kiểu thuộc tính, `!Ref` / `!GetAtt`).
+- **`sam build`**
+  - Mục tiêu: đóng gói code thành bản sẵn sàng chạy trên Lambda (giống `npm run build` → `dist/`).
+  - Input → Output: `template.yaml` + `backend/` + `requirements.txt` → `.aws-sam/build/` (template mới + code + thư viện).
+  - Cơ chế: mỗi Function: copy source theo `CodeUri` → `pip install` vào cùng thư mục → viết lại template trỏ `CodeUri` sang bản build.
+  - Lưu ý: `--use-container` build trong Docker giống Lambda (dự án thật dùng); lab / CodeBuild `standard:7.0` có sẵn Python 3.12 nên không cần.
+- **`sam local start-api`**
+  - Mục tiêu: test API giống môi trường thật, không tốn tiền, không cần AWS (giống `npm run dev`).
+  - Input → Output: `.aws-sam/build/` + `env.local.json` + `Env=stg` → API ở `http://127.0.0.1:3000`, log in ra terminal.
+  - Cơ chế: web server :3000 theo path trong template → HTTP đổi thành event API Gateway (`httpMethod`, `path`…) → chạy container Docker Lambda Python 3.12 → gọi `lambda_handler(event, context)` → `{statusCode, body}` đổi lại thành HTTP response.
+  - Lưu ý: cần Docker đang chạy; chỉ giả lập Lambda + API Gateway, **không** có S3 / CloudFront / Secrets Manager → secret lấy từ `env.local.json`, FE dùng Vite proxy thay CloudFront.
+- **`sam deploy --config-env stg`**
+  - Mục tiêu: đưa app lên AWS. Đây là bước CI/CD sẽ tự động hoá.
+  - Input → Output: `.aws-sam/build/` + mục `[stg]` trong `samconfig.toml` + quyền AWS → stack `cicd-lab-stg` + Outputs `ApiUrl`, `SiteUrl`, `FrontendBucket`, `DistributionId`.
+  - Cơ chế: zip code → upload S3 (`resolve_s3`) → thay `CodeUri` bằng đường dẫn S3 → CloudFormation tạo changeset (diff) → xác nhận → tạo/sửa resource (lúc này mới đọc secret `{{resolve:secretsmanager:...}}`) → chờ xong.
+  - Lưu ý (CI): `--no-confirm-changeset` (không có người bấm `y`) · `--no-fail-on-empty-changeset` (không đổi gì vẫn xanh).
+- **Lệnh phụ**: `sam local invoke` (gọi Lambda 1 lần với event JSON) · `sam logs` (kéo log CloudWatch) · `sam delete` (xoá stack + resource; bucket phải rỗng).
+- **Luồng**: `validate` → `build` → `local start-api` (Phase 2) / `deploy` (Phase 3 → CI/CD).
+- **Lỗi gặp khi chạy local (Colima trên Mac chip M)**
+  - `colima start` lỗi `attach disk ... in use by instance "colima"`: lần trước tắt đột ngột, còn sót khoá `~/.colima/_lima/_disks/colima/in_use_by` → `colima stop -f`, xoá symlink đó (không mất dữ liệu), `colima start`.
+  - `sam` báo `requires a container runtime` dù `docker ps` chạy được: lệnh `docker` đọc **context** (colima), còn SAM chỉ đọc biến `DOCKER_HOST`, mặc định `/var/run/docker.sock` (trỏ Docker Desktop đang tắt) → `export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"` (thêm vào `~/.zshrc` để khỏi gõ lại).
+  - `502` + `timed out` + `Lambda response must be valid json`: Lambda mặc định **x86_64**, VM Colima là **arm64**, `rosetta: false` → giả lập QEMU rất chậm, quá timeout → `colima stop && colima start --vz-rosetta`.
+  - Bài học: lỗi local thường do **môi trường** (runtime, kiến trúc CPU), không phải code; CI (CodeBuild / GitHub Actions x86) sẽ không gặp các lỗi này. Cân nhắc `Architectures: [arm64]` (rẻ hơn ~20%) chỉ khi binary native hỗ trợ arm64.
+- **Luồng local = luồng AWS**: Trình duyệt → Vite :5173 (vai CloudFront, proxy `/api/*`) → sam local :3000 (vai API Gateway) → Lambda (Docker).

@@ -62,13 +62,14 @@ Ký hiệu: `[ ]` chưa làm · `[x]` xong · 👤 bạn làm · 🤖 Claude là
 - [x] 1.6 🤖 Kiểm tra local (`pytest`, `sam validate --lint`, `npm run build`, grep) → 👤 tự commit
 
 ## Phase 2 – Chạy local
-- [ ] 👤 `pytest backend/tests`
-- [ ] 👤 `sam build` → `sam local start-api` → gọi `http://127.0.0.1:3000/api/hello`
-- [ ] 👤 `npm run dev` ở `frontend/`
+- [x] 👤 `pytest backend/tests`
+- [x] 👤 `sam build` → `sam local start-api` → gọi `http://127.0.0.1:3000/api/hello`
+  - Colima: cần `export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"` + `colima start --vz-rosetta` (xem LEARNING Ngày 2)
+- [x] 👤 `npm run dev` ở `frontend/`
 
 ## Phase 3 – Deploy tay (baseline)
 - [ ] 👤 Tạo secret `cicd-lab/stg`, `cicd-lab/prd` trong Secrets Manager
-- [ ] 🤖 `scripts/deploy.sh <env>`: sam build/deploy → đọc Outputs → build FE → `s3 sync` → invalidate CloudFront
+- [x] 🤖 `scripts/deploy.sh <env>`: sam build/deploy → đọc Outputs → build FE → `s3 sync` → invalidate CloudFront
 - [ ] 👤 `bash scripts/deploy.sh stg` → mở SiteUrl, kiểm tra `/api/hello`
 - [ ] 👤 Ghi lại các bước tay / thời gian (để so sánh khi có CI/CD)
 
