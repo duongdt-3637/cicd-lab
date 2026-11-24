@@ -136,3 +136,8 @@
   - CloudFormation resolve secret bằng **quyền của người gọi** `sam deploy` (ở đây là service role) → role phải có `GetSecretValue` (Phase 7 bỏ quyền này để xem lỗi).
   - Thiếu quyền → log báo `AccessDenied ... not authorized to perform: <action> on resource: <arn>` → thêm **đúng action đó** vào policy, không cấp Admin cho nhanh.
   - Policy có account ID mà repo là public: account ID không phải secret, nhưng vẫn nên hạn chế công khai.
+- **Lỗi build #1: `pyenv: version '3.12.12' is not installed`** (phase INSTALL, lệnh `pip install`)
+  - Đọc log: dòng `COMMAND_EXECUTION_ERROR` chỉ là tóm tắt → nguyên nhân thật nằm **ngay phía trên** nó.
+  - Nguyên nhân: `.python-version` (`3.12.12`, cấu hình pyenv của máy dev) đã commit vào repo. Image CodeBuild cũng dùng pyenv → đọc file này → đòi đúng bản `3.12.12`, mà image chỉ có một bản 3.12.x khác.
+  - Sửa: trong `buildspec.yml`, `rm -f .python-version` trước `pip install` (chỉ xoá trong container, máy dev vẫn giữ) → dùng Python do `runtime-versions` chọn.
+  - Bài học: **cấu hình riêng của máy dev lọt vào CI** là lỗi rất hay gặp. Chạy được ở máy ≠ chạy được trên CI → đây chính là lý do cần CI.

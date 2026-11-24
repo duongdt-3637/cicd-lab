@@ -17,6 +17,9 @@ phases:
       python: 3.12
       nodejs: 20
     commands:
+      # .python-version (3.12.12) là cấu hình pyenv của máy dev; image không có đúng bản này
+      # → xoá trong container, để dùng Python 3.12 do runtime-versions chọn
+      - rm -f .python-version
       - pip install -r requirements-dev.txt
 
   # ---------- 2. Kiểm tra (lỗi rẻ, bắt sớm) ----------

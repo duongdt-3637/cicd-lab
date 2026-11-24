@@ -76,7 +76,7 @@ Ký hiệu: `[ ]` chưa làm · `[x]` xong · 👤 bạn làm · 🤖 Claude là
 ## Phase 4 – Hướng ② CodeBuild (+ EventBridge)
 - [x] 🤖 `buildspec.yml`: lint → pytest → `test -x native/hello` → sam build/deploy → FE sync → invalidate (biến `ENV`)
 - [x] 👤 Tạo GitHub connection (CodeConnections) – `cicd-lab-github`
-- [ ] 👤 Tạo project CodeBuild (image `standard:7.0`, `ENV=stg`) + service role
+- [x] 👤 Tạo project CodeBuild `cicd-lab-stg` (image `standard:7.0`, `ENV=stg`) + service role `cicd-lab-codebuild-role`
 - [ ] 👤 Bật webhook PUSH `main` → push thử → xem log CloudWatch
 - [ ] 👤 EventBridge rule (schedule) → StartBuild
 - [ ] 👤 (Tuỳ chọn – bỏ nếu thiếu giờ) EventBridge rule S3 Object Created → StartBuild
