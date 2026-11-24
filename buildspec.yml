@@ -1,0 +1,38 @@
+# buildspec.yml: "kịch bản" CodeBuild chạy mỗi lần build (đặt ở gốc repo, CodeBuild tự tìm file tên này)
+# Máy build: image aws/codebuild/standard:7.0 (Ubuntu, x86_64) – mỗi lần build là 1 container sạch
+# Thứ tự: install → pre_build → build → post_build. Lệnh nào exit ≠ 0 → phase đó FAILED, build đỏ
+version: 0.2
+
+# ===== Biến môi trường =====
+# Giá trị mặc định; ghi đè được ở cấu hình project CodeBuild (Console) hoặc khi StartBuild
+env:
+  variables:
+    ENV: stg
+
+phases:
+  # ---------- 1. Cài công cụ ----------
+  # runtime-versions: chọn version có sẵn trong image (không phải tự cài Python / Node)
+  install:
+    runtime-versions:
+      python: 3.12
+      nodejs: 20
+    commands:
+      - pip install -r requirements-dev.txt
+
+  # ---------- 2. Kiểm tra (lỗi rẻ, bắt sớm) ----------
+  # Hỏng ở đây → không build, không deploy
+  pre_build:
+    commands:
+      - black --check backend
+      - isort --check-only backend
+      - flake8 backend
+      - pytest
+      # Lỗi PermissionError của dự án thật: file binary thiếu quyền chạy (x)
+      - test -x backend/native/hello || (echo "backend/native/hello thiếu quyền chạy (chmod +x)" && exit 1)
+
+  # ---------- 3. Build + deploy ----------
+  # Dùng lại đúng script deploy tay (Phase 3): sam build/deploy → Outputs → build FE → s3 sync → invalidate
+  # Quyền AWS: service role của project CodeBuild (không cần AWS_PROFILE / access key)
+  build:
+    commands:
+      - bash scripts/deploy.sh "$ENV"

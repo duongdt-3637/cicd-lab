@@ -14,9 +14,15 @@ if [[ "$ENV" != "stg" && "$ENV" != "prd" ]]; then
   exit 1
 fi
 
+# Đang chạy trên CI? CodeBuild tự set CODEBUILD_BUILD_ID, GitHub Actions tự set CI=true
+IS_CI=false
+if [[ -n "${CI:-}" || -n "${CODEBUILD_BUILD_ID:-}" ]]; then
+  IS_CI=true
+fi
+
 # Máy cá nhân: profile `default` là account khác → bắt buộc chọn profile.
 # CI (CodeBuild / GitHub Actions) không cần, vì dùng role.
-if [[ -z "${AWS_PROFILE:-}" && -z "${CI:-}" && -z "${CODEBUILD_BUILD_ID:-}" ]]; then
+if [[ -z "${AWS_PROFILE:-}" && "$IS_CI" == false ]]; then
   echo "Chưa set AWS_PROFILE. Chạy: export AWS_PROFILE=cicd-lab" >&2
   exit 1
 fi
@@ -29,7 +35,13 @@ echo "==> Account: $(aws sts get-caller-identity --query Account --output text) 
 # ---------- 1. Backend: build + deploy ----------
 echo "==> [1/4] sam build + deploy"
 sam build
-sam deploy --config-env "$ENV" # cấu hình lấy từ samconfig.toml, mục [stg] / [prd]
+# Cấu hình lấy từ samconfig.toml, mục [stg] / [prd]; cờ trên dòng lệnh ghi đè samconfig
+# --no-fail-on-empty-changeset: backend không đổi (chỉ sửa FE) → vẫn chạy tiếp, không dừng ở đây
+DEPLOY_ARGS=(--config-env "$ENV" --no-fail-on-empty-changeset)
+if [[ "$IS_CI" == true ]]; then
+  DEPLOY_ARGS+=(--no-confirm-changeset) # CI không có ai bấm `y`
+fi
+sam deploy "${DEPLOY_ARGS[@]}"
 
 # ---------- 2. Đọc Outputs của stack ----------
 echo "==> [2/4] Đọc Outputs"

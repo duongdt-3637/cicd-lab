@@ -68,14 +68,14 @@ Ký hiệu: `[ ]` chưa làm · `[x]` xong · 👤 bạn làm · 🤖 Claude là
 - [x] 👤 `npm run dev` ở `frontend/`
 
 ## Phase 3 – Deploy tay (baseline)
-- [ ] 👤 Tạo secret `cicd-lab/stg`, `cicd-lab/prd` trong Secrets Manager
+- [x] 👤 Tạo secret `cicd-lab/stg`, `cicd-lab/prd` trong Secrets Manager
 - [x] 🤖 `scripts/deploy.sh <env>`: sam build/deploy → đọc Outputs → build FE → `s3 sync` → invalidate CloudFront
-- [ ] 👤 `bash scripts/deploy.sh stg` → mở SiteUrl, kiểm tra `/api/hello`
-- [ ] 👤 Ghi lại các bước tay / thời gian (để so sánh khi có CI/CD)
+- [x] 👤 `bash scripts/deploy.sh stg` → mở SiteUrl, kiểm tra `/api/hello`
+- [x] 👤 Ghi lại các bước tay / thời gian (để so sánh khi có CI/CD)
 
 ## Phase 4 – Hướng ② CodeBuild (+ EventBridge)
-- [ ] 🤖 `buildspec.yml`: lint → pytest → `test -x native/hello` → sam build/deploy → FE sync → invalidate (biến `ENV`)
-- [ ] 👤 Tạo GitHub connection (CodeConnections)
+- [x] 🤖 `buildspec.yml`: lint → pytest → `test -x native/hello` → sam build/deploy → FE sync → invalidate (biến `ENV`)
+- [x] 👤 Tạo GitHub connection (CodeConnections) – `cicd-lab-github`
 - [ ] 👤 Tạo project CodeBuild (image `standard:7.0`, `ENV=stg`) + service role
 - [ ] 👤 Bật webhook PUSH `main` → push thử → xem log CloudWatch
 - [ ] 👤 EventBridge rule (schedule) → StartBuild

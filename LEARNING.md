@@ -55,3 +55,84 @@
   - `502` + `timed out` + `Lambda response must be valid json`: Lambda mặc định **x86_64**, VM Colima là **arm64**, `rosetta: false` → giả lập QEMU rất chậm, quá timeout → `colima stop && colima start --vz-rosetta`.
   - Bài học: lỗi local thường do **môi trường** (runtime, kiến trúc CPU), không phải code; CI (CodeBuild / GitHub Actions x86) sẽ không gặp các lỗi này. Cân nhắc `Architectures: [arm64]` (rẻ hơn ~20%) chỉ khi binary native hỗ trợ arm64.
 - **Luồng local = luồng AWS**: Trình duyệt → Vite :5173 (vai CloudFront, proxy `/api/*`) → sam local :3000 (vai API Gateway) → Lambda (Docker).
+
+## Ngày 4 – 23/11 (deploy tay vs CodeBuild, `buildspec.yml`)
+- **Deploy tay (Phase 3) → CodeBuild (Phase 4)**
+  - Ý chính: lệnh deploy gần như **không đổi** (`sam build` / `sam deploy` / `s3 sync` / invalidate); thứ đổi là **ai chạy, chạy ở đâu, quyền gì, chặn lỗi ở đâu**.
+  - Luồng: `git push main` → GitHub webhook → CodeConnections → CodeBuild bật container sạch (`standard:7.0`, x86_64) → tải source → chạy `buildspec.yml` bằng **service role** → AWS; log → CloudWatch Logs.
+
+    | Tiêu chí | Tay | CodeBuild |
+    |---|---|---|
+    | Kích hoạt | Gõ lệnh | Push `main` (webhook) / lịch (EventBridge) |
+    | Nơi chạy | Mac (arm64, có sẵn venv) | Container sạch x86_64, dùng xong xoá |
+    | Code | Thư mục máy, **kể cả chưa commit** | Chỉ code đã push |
+    | Quyền | Access key IAM user (`AWS_PROFILE`) | Service role (key tạm, không lưu key) |
+    | Kiểm tra | Không bắt buộc | `pre_build` bắt buộc |
+    | Changeset | Bấm `y` | `--no-confirm-changeset` |
+    | Log / lịch sử | Terminal, mất khi tắt | CloudWatch + build ID, commit, thời gian |
+    | Chi phí | 0 | Theo phút build (free tier 100 phút/tháng) |
+
+  - Thành phần mới ↔ tương ứng Phase 3: `buildspec.yml` ↔ `deploy.sh` · CodeConnections ↔ `git clone` · CodeBuild project ↔ Mac · service role ↔ IAM user + profile · webhook / EventBridge ↔ tự gõ lệnh.
+  - Một câu: **Phase 4 = đem `deploy.sh` lên máy chung trên AWS, tự chạy khi push, thêm "cổng kiểm tra" trước deploy.**
+- **`buildspec.yml`**
+  - Mục tiêu: kịch bản CodeBuild chạy mỗi lần build (đặt ở gốc repo).
+  - Thành phần: `version: 0.2` · `env.variables` (`ENV=stg`, ghi đè được ở project) · `phases`: `install` (cài công cụ) → `pre_build` (kiểm tra) → `build` → `post_build`.
+  - Lưu ý: lệnh nào exit ≠ 0 → phase FAILED, build đỏ · `runtime-versions` chọn Python / Node có sẵn trong image · container sạch nên không cần venv · CI chỉ **kiểm tra** (`black --check`, `isort --check-only`), không tự sửa code.
+  - pre-commit (local, bỏ qua được bằng `--no-verify`) ≠ `pre_build` (CI, ai push cũng phải qua) → CI là **chốt chặn cuối**.
+- **Webhook**
+  - Mục tiêu: khi có sự kiện (push), GitHub **tự gửi HTTP POST** báo cho CodeBuild → build tự chạy (giống event listener; ngược với polling / bấm tay Start build).
+  - Lưu ý: chỉ **báo tin** (branch, commit SHA, người push), không mang code; CodeBuild tự tải source · **filter** quyết định có build không (`EVENT=PUSH`, `HEAD_REF=^refs/heads/main$`) · bật "Rebuild every time a code change is pushed" là AWS tự đăng ký với GitHub.
+  - Webhook = theo **sự kiện**; EventBridge schedule = theo **thời gian**.
+  - Tắt trước Phase 5: nếu không, 1 lần push → CodeBuild + CodePipeline cùng deploy 1 stack → xung đột (`UPDATE_IN_PROGRESS`).
+
+## Ngày 5 – 24/11 (CodeConnections, service role CodeBuild)
+- GitHub connection `cicd-lab-github` (CodeConnections): cho AWS đọc repo GitHub; dùng chung cho CodeBuild (Phase 4) + CodePipeline (Phase 5).
+- Service role CodeBuild = "IAM user" của máy build, nhưng không có access key (key tạm). Policy riêng, giới hạn `cicd-lab-*`.
+- Cách đọc policy / ARN, ý nghĩa từng `Sid`: xem `cicd/codebuild/README.md`.
+
+## Ngày 5 – 24/11 (CodeConnections, service role CodeBuild)
+- **GitHub connection (CodeConnections)**
+  - Mục tiêu: cho AWS quyền đọc repo GitHub (thay cho `git clone` khi làm tay); CodeBuild (Phase 4) và CodePipeline (Phase 5) dùng chung.
+  - Lưu ý: cài GitHub App **chỉ cho repo `cicd-lab`** · trạng thái `Pending` = chưa cài xong app → "Update pending connection" · tên service cũ là `codestar-connections` → policy ghi cả 2 tên cho chắc.
+- **Service role** (`cicd-lab-codebuild-role`)
+  - Mục tiêu: role mà CodeBuild "đóng vai" để gọi AWS; ứng với IAM user + `AWS_PROFILE` khi deploy tay; chỉ có **key tạm**, không lưu access key.
+  - 2 phần của 1 role: **trust policy** (`codebuild.amazonaws.com`) = **ai** được đóng vai · **permission policy** (`cicd/codebuild/service-role-policy.json`) = **được làm gì**.
+- **Cấu trúc 1 policy** (file JSON không có comment → ghi ở đây)
+
+  | Thành phần | Ý nghĩa | Ví dụ |
+  |---|---|---|
+  | `Version` | Phiên bản cú pháp, luôn là `2012-10-17` | |
+  | `Statement` | Danh sách các luật | |
+  | `Sid` | Tên luật, chỉ để đọc cho dễ | `ReadAppSecret` |
+  | `Effect` | `Allow` / `Deny` (Deny thắng Allow) | `Allow` |
+  | `Action` | `service:HànhĐộng`; `*` = mọi hành động | `lambda:*`, `s3:PutObject` |
+  | `Resource` | ARN tài nguyên áp dụng; `*` = tất cả | `...:function:cicd-lab-*` |
+  | `Condition` | Điều kiện thêm (tuỳ chọn) | `iam:PassedToService = lambda.amazonaws.com` |
+
+- **ARN** = "địa chỉ" của tài nguyên: `arn:aws:<service>:<region>:<account>:<loại>/<tên>`
+  - S3 và IAM không có region: `arn:aws:s3:::bucket`, `arn:aws:iam::<account>:role/x` (S3 không có cả account).
+  - Bucket cần 2 dòng: `bucket` (quyền với bucket, vd. list) và `bucket/*` (quyền với object, vd. put / get).
+- **Từng `Sid` dùng cho bước nào**
+
+  | Sid | Dùng khi | Giới hạn |
+  |---|---|---|
+  | `CodeBuildLogs` | CodeBuild ghi log build ra CloudWatch | `/aws/codebuild/cicd-lab*` |
+  | `UseGitHubConnection` | Tải source từ GitHub | Đúng connection `cicd-lab-github` |
+  | `CloudFormationStacks` | `sam deploy`: tạo / cập nhật stack, changeset | Stack `cicd-lab-*`, `aws-sam-cli-managed-default` |
+  | `SamTransform` | Changeset chứa `Transform: AWS::Serverless` → CloudFormation đổi cú pháp SAM sang tài nguyên thường | Transform `Serverless-2016-10-31` |
+  | `CloudFormationReadOnly` | SAM kiểm tra template | `*` (chỉ đọc) |
+  | `S3Buckets` | Upload code Lambda (bucket của SAM) · tạo bucket FE · `s3 sync` | `aws-sam-cli-managed-default-*`, `cicd-lab-*` |
+  | `LambdaFunctions` | Tạo / cập nhật Lambda | `function:cicd-lab-*` |
+  | `IamRolesForLambda` | Tạo role cho Lambda (SAM tự sinh `AppFunctionRole`) | `role/cicd-lab-*` |
+  | `PassRoleToLambdaOnly` | Gắn role đó vào Lambda | Chỉ được gắn cho Lambda |
+  | `ApiGateway` | Tạo REST API, stage `Prod` | Không giới hạn theo tên được |
+  | `CloudFront` | Distribution, OAC, `create-invalidation` | `*` (CloudFront không giới hạn theo tên được) |
+  | `LambdaLogGroups`, `DescribeLogGroups` | Log group của Lambda, giữ log 7 ngày | `/aws/lambda/cicd-lab-*` |
+  | `ReadAppSecret` | Resolve `{{resolve:secretsmanager:cicd-lab/<env>...}}` lúc deploy | `secret:cicd-lab/*` |
+
+- **Lưu ý**
+  - **Least privilege**: chỉ cấp đủ quyền cần dùng, giới hạn theo tên `cicd-lab-*` → role không đụng được tài nguyên khác trong account. Dịch vụ nào không giới hạn theo tên được thì đành dùng `*`.
+  - `iam:PassRole` + `Condition` = chỉ được gắn role `cicd-lab-*` cho Lambda. Nếu không có điều kiện này, role có thể gắn một role mạnh hơn cho service khác → leo quyền.
+  - CloudFormation resolve secret bằng **quyền của người gọi** `sam deploy` (ở đây là service role) → role phải có `GetSecretValue` (Phase 7 bỏ quyền này để xem lỗi).
+  - Thiếu quyền → log báo `AccessDenied ... not authorized to perform: <action> on resource: <arn>` → thêm **đúng action đó** vào policy, không cấp Admin cho nhanh.
+  - Policy có account ID mà repo là public: account ID không phải secret, nhưng vẫn nên hạn chế công khai.
