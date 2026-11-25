@@ -141,3 +141,14 @@
   - Nguyên nhân: `.python-version` (`3.12.12`, cấu hình pyenv của máy dev) đã commit vào repo. Image CodeBuild cũng dùng pyenv → đọc file này → đòi đúng bản `3.12.12`, mà image chỉ có một bản 3.12.x khác.
   - Sửa: trong `buildspec.yml`, `rm -f .python-version` trước `pip install` (chỉ xoá trong container, máy dev vẫn giữ) → dùng Python do `runtime-versions` chọn.
   - Bài học: **cấu hình riêng của máy dev lọt vào CI** là lỗi rất hay gặp. Chạy được ở máy ≠ chạy được trên CI → đây chính là lý do cần CI.
+- **Lỗi build #2: `AccessDenied ... cloudformation:CreateChangeSet`** (phase BUILD, lúc `sam deploy`)
+  - Đọc lỗi theo 3 ý: **ai** (`assumed-role/<tên role>`) · **làm gì** (action) · **trên cái gì** (resource).
+  - Lần này sai ở **ai**: role là `codebuild-cicd-lab-stg-service-role`, do CodeBuild **tự tạo** vì lúc tạo project để *New service role*. Role này chỉ có quyền tối thiểu (log, source). Role mình tạo là `cicd-lab-codebuild-role`, policy đã có sẵn quyền này.
+  - Sửa: project → Edit → Environment → *Existing service role* → `cicd-lab-codebuild-role`, bỏ tick "Allow AWS CodeBuild to modify this service role" → build lại → **Succeeded**. Không sửa file policy.
+  - Bài học: gặp `AccessDenied` thì **kiểm tra đúng role trước**, sau đó mới thêm quyền. Thêm quyền vào nhầm role thì lỗi không hết, còn làm role thừa mở rộng quyền.
+  - Dọn sau (Phase 9 hoặc lúc tiện): xoá role thừa `codebuild-cicd-lab-stg-service-role` + policy `CodeBuildBasePolicy-cicd-lab-stg-...`.
+- **Build xanh nhưng chỉ S3 có "Last modified" mới, vì sao?** `sam deploy` chỉ cập nhật phần **có thay đổi**.
+  - Template và code giống Phase 3 → change set rỗng (`No changes to deploy`) → Lambda, API GW, cấu hình CloudFront giữ nguyên. Nhờ `--no-fail-on-empty-changeset` nên build không đỏ.
+  - FE thì `npm run build` tạo file mới trong container → `s3 sync` upload lại → S3 đổi ngày. CloudFront có thêm 1 dòng trong tab Invalidations.
+  - **Idempotent**: chạy lại bao nhiêu lần, kết quả vẫn như nhau. Ví von: thợ so bản vẽ với nhà thật, giống thì không làm gì.
+  - Kiểm chứng: log build có `No changes to deploy` · CloudFormation Events không có sự kiện mới. Muốn Lambda đổi thì phải sửa code backend / template rồi deploy.

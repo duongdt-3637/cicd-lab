@@ -18,6 +18,7 @@ def test_health_check():
     status, body = _call(_event("/api/health_check"))
     assert status == 200
     assert body["status"] == "ok"
+    assert body["deployed_by"] == "codebuild-webhook"
 
 
 def test_hello_default_name():
